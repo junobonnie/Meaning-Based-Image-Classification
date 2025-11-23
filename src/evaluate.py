@@ -69,7 +69,7 @@ def main():
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     ])
     
-    clip_processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
+    clip_processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32", use_safetensors=True)
     
     # 데이터셋 로드
     dataset = HybridDataset(args.data_dir, transform=mobilenet_transform, clip_processor=clip_processor)

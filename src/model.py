@@ -24,7 +24,7 @@ class HybridClassifier(nn.Module):
         # 2. CLIP (의미적 특징)
         if self.mode in ['hybrid', 'clip']:
             # 사전 학습된 CLIP 모델 로드
-            self.clip = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
+            self.clip = CLIPModel.from_pretrained("openai/clip-vit-base-patch32", use_safetensors=True)
             self.clip_features_dim = 512 
             
             # 초기에는 백본 모델 고정
@@ -79,11 +79,51 @@ class HybridClassifier(nn.Module):
         
         return output
     
-    def unfreeze_backbones(self, unfreeze_mobilenet=True, unfreeze_clip=False):
-        """백본 모델의 파라미터 고정을 해제하여 미세 조정을 가능하게 합니다."""
-        if self.mobilenet and unfreeze_mobilenet:
-            for param in self.mobilenet.parameters():
-                param.requires_grad = True
-        if self.clip and unfreeze_clip:
-            for param in self.clip.parameters():
-                param.requires_grad = True
+    def unfreeze_backbones(self, n_layers=0):
+        """
+        백본 모델의 마지막 n_layers개 층의 파라미터 고정을 해제하여 미세 조정을 가능하게 합니다.
+        n_layers=0이면 모든 백본을 고정 상태로 유지합니다 (기본값).
+        n_layers=-1이면 모든 백본을 해제합니다.
+        """
+        if n_layers == 0:
+            return
+
+        # 1. MobileNetV3 Unfreeze
+        if self.mobilenet:
+            if n_layers == -1:
+                for param in self.mobilenet.parameters():
+                    param.requires_grad = True
+            else:
+                # features의 마지막 n_layers 블록 해제
+                # MobileNetV3의 features는 Sequential 객체임
+                total_layers = len(self.mobilenet.features)
+                start_idx = max(0, total_layers - n_layers)
+                
+                for i, layer in enumerate(self.mobilenet.features):
+                    if i >= start_idx:
+                        for param in layer.parameters():
+                            param.requires_grad = True
+                            
+        # 2. CLIP Unfreeze
+        if self.clip:
+            if n_layers == -1:
+                for param in self.clip.parameters():
+                    param.requires_grad = True
+            else:
+                # CLIP Vision Encoder의 마지막 n_layers 블록 해제
+                # clip.vision_model.encoder.layers는 ModuleList임
+                encoder_layers = self.clip.vision_model.encoder.layers
+                total_layers = len(encoder_layers)
+                start_idx = max(0, total_layers - n_layers)
+                
+                for i, layer in enumerate(encoder_layers):
+                    if i >= start_idx:
+                        for param in layer.parameters():
+                            param.requires_grad = True
+                
+                # Encoder 이후의 LayerNorm과 Projection도 해제해야 함
+                for param in self.clip.vision_model.post_layernorm.parameters():
+                    param.requires_grad = True
+                if hasattr(self.clip, 'visual_projection'):
+                    for param in self.clip.visual_projection.parameters():
+                        param.requires_grad = True

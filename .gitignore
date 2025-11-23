@@ -20,6 +20,11 @@ venv.bak/
 dummy_data/
 data/
 datasets/
+images/
+input/
+output/
+results/
+results_test/
 checkpoints/
 *.png
 *.pth.tar

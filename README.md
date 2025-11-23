@@ -9,6 +9,7 @@
   - `hybrid`: MobileNetV3 + CLIP (권장)
   - `mobilenet`: MobileNetV3만 사용 (기존 CNN 방식)
   - `clip`: CLIP만 사용 (텍스트-이미지 의미적 연결 활용)
+- **안전한 모델 로딩**: `safetensors`를 사용하여 `torch.load` 보안 취약점을 방지합니다.
 - **자동화된 파이프라인**: 데이터 로드, 전처리, 학습, 검증, 평가까지의 전체 과정을 지원합니다.
 
 ## 🛠️ 설치 방법 (Installation)
@@ -18,6 +19,8 @@
 ```bash
 pip install -r requirements.txt
 ```
+
+> **참고**: CLIP 모델 로딩 시 보안을 위해 `safetensors` 패키지가 필요합니다. `requirements.txt`에 포함되어 있습니다.
 
 ## 데이터셋 준비 (Data Preparation)
 
@@ -54,6 +57,11 @@ python src/train.py --data_dir ./path/to/dataset
 - `--lr`: 학습률 (기본값: 0.001).
 - `--mode`: 모델 모드 선택 (`hybrid`, `mobilenet`, `clip` 중 택1, 기본값: `hybrid`).
 - `--output_dir`: 체크포인트 및 로그 저장 경로 (기본값: `checkpoints`).
+- `--max_samples`: 클래스별 학습에 사용할 최대 데이터 개수 (디버깅용, 기본값: None). 예를 들어 10으로 설정하면 각 클래스당 최대 10개의 이미지만 사용합니다.
+- `--patience`: Early Stopping을 위한 기다림 에폭 수 (기본값: 5). 0으로 설정하면 Early Stopping을 비활성화합니다.
+- `--fine_tune`: 이 플래그를 추가하면 Feature Extraction 후 Fine-tuning 단계를 진행합니다.
+- `--ft_lr`: Fine-tuning 단계의 학습률 (기본값: 1e-4).
+- `--ft_epochs`: Fine-tuning 단계의 최대 에폭 수 (기본값: 5).
 
 **예시:**
 ```bash
@@ -67,13 +75,44 @@ python src/train.py --data_dir ./data/my_dataset --epochs 20 --mode hybrid --out
 
 **사용법:**
 ```bash
-python src/evaluate.py --data_dir ./path/to/dataset --checkpoint ./checkpoints/checkpoint_hybrid_epoch_10.pth.tar
+python src/evaluate.py --data_dir ./path/to/dataset --checkpoint ./checkpoints/checkpoint_hybrid_last.pth.tar
 ```
 
 **주요 옵션:**
 - `--data_dir`: (필수) 평가할 데이터셋 경로 (학습 데이터와 동일한 구조).
 - `--checkpoint`: (필수) 학습된 모델의 체크포인트 파일 경로 (.pth.tar).
 - `--batch_size`: 배치 크기 (기본값: 32).
+
+### 3. 이미지 분류 및 정렬 (Inference & Sort)
+
+학습된 모델을 사용하여 특정 폴더(`input_dir`)에 있는 이미지들을 분류하고, 결과 폴더(`output_dir`) 내에 클래스별로 폴더를 생성하여 복사합니다.
+
+**사용법:**
+```bash
+python src/inference_sort.py --input_dir ./input_images --output_dir ./sorted_images --checkpoint ./results/checkpoint_hybrid_last.pth.tar
+```
+
+**주요 옵션:**
+- `--input_dir`: (필수) 분류할 이미지가 들어있는 폴더 경로.
+- `--output_dir`: (필수) 분류된 이미지가 저장될 폴더 경로.
+- `--checkpoint`: (필수) 학습된 모델 체크포인트 경로.
+- `--threshold`: 분류 확신도 임계값 (0.0 ~ 1.0, 기본값: 0.0). 이 값보다 낮은 확률로 예측된 이미지는 `others_dir`로 이동합니다.
+- `--others_dir`: 임계값 미만인 이미지를 저장할 폴더 이름 (기본값: `others`).
+
+## ⚠️ 트러블슈팅 (Troubleshooting)
+
+### `torch.load` 보안 취약점 오류 (Vulnerability Error)
+
+학습 실행 시 다음과 같은 오류가 발생할 수 있습니다:
+```
+FutureWarning: You are using `torch.load` with `weights_only=False`...
+Due to a serious vulnerability issue in `torch.load`...
+```
+
+**해결 방법**:
+이 프로젝트는 `safetensors`를 사용하여 이 문제를 해결했습니다. 만약 이 오류가 계속 발생한다면 다음을 확인하세요:
+1. `safetensors` 패키지가 설치되어 있는지 확인 (`pip install safetensors`)
+2. `src/model.py`와 `src/train.py`에서 `use_safetensors=True` 옵션이 적용되어 있는지 확인
 
 ## 📂 파일 구조
 
@@ -86,5 +125,6 @@ python src/evaluate.py --data_dir ./path/to/dataset --checkpoint ./checkpoints/c
     ├── model.py        # HybridClassifier 모델 정의
     ├── train.py        # 학습 스크립트
     ├── evaluate.py     # 평가 스크립트
+    ├── inference_sort.py # 이미지 분류 및 정렬 스크립트
     └── utils.py        # 유틸리티 함수 (시각화, 체크포인트 저장 등)
 ```
